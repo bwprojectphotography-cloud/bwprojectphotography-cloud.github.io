@@ -327,7 +327,7 @@
         </div>
 
         <div class="filters" role="group" aria-label="Filter posts by tag">
-          <span class="count" id="post-count">2 posts</span>
+          <span class="count" id="post-count">3 posts</span>
           <button class="chip" data-filter="all" aria-pressed="true">All</button>
           <button class="chip" data-filter="review" aria-pressed="false">Reviews</button>
           <button class="chip" data-filter="field-notes" aria-pressed="false">Field Notes</button>
@@ -335,8 +335,17 @@
         </div>
 
         <div class="post-list" id="post-list">
+          <a class="post" href="#post/post-street-photography-2026-unethical" data-open="post-street-photography-2026-unethical" data-tag="field-notes">
+            <span class="thumb"><img src="images/photo-05.jpg" alt="Black-and-white street photo of two women on a downtown Chicago sidewalk in harsh sunlight and deep shadow" loading="eager" fetchpriority="high"></span>
+            <span>
+              <span class="meta"><span class="tag">Field Notes</span><span>October 2026</span></span>
+              <h2>Street Photography in 2026: Is It Unethical Now?</h2>
+              <p class="excerpt">I've always had an internal struggle over what version is the right or correct approach.</p>
+              <span class="read">Read the post <span>→</span></span>
+            </span>
+          </a>
           <a class="post" href="#post/post-albany-park-photo-book" data-open="post-albany-park-photo-book" data-tag="field-notes">
-            <span class="thumb"><img src="images/photo-01.jpg" alt="A brick courtyard building in Albany Park, Chicago, seen through a chain-link fence with hydrangeas, shot on the Nikon Zf" loading="eager" fetchpriority="high"></span>
+            <span class="thumb"><img src="images/photo-01.jpg" alt="A brick courtyard building in Albany Park, Chicago, seen through a chain-link fence with hydrangeas, shot on the Nikon Zf" loading="lazy" decoding="async"></span>
             <span>
               <span class="meta"><span class="tag">Field Notes</span><span>October 2026</span></span>
               <h2>Albany Park: A Photo Book</h2>
@@ -435,6 +444,26 @@
           <p>The book is about the beauty of ordinary life here. A storefront. A restaurant. A family walking down the street. A handwritten sign. A kid riding a bike. None of these things are extraordinary on their own. But together, they create something. A feeling. A sense of belonging.</p>
           <p>I'm not trying to convince anyone Albany Park is perfect. It isn't. I'm simply trying to show you what I see when I walk through it.</p>
           <p>For a long time, I thought becoming someone meant separating myself from where I came from. Now I'm starting to think becoming yourself might mean finding your way back.</p>
+        </article>
+      </section>
+
+      <!-- ============ POST: STREET PHOTOGRAPHY IN 2026 ============ -->
+      <section class="view" id="view-post-street-photography-2026-unethical" hidden>
+        <article class="article">
+          <button class="backlink" data-goto="posts">← All posts</button>
+          <div class="meta"><span class="tag">Field Notes</span><span>October 2026</span></div>
+          <h1>Street Photography in 2026: Is It Unethical Now?</h1>
+          <p class="standfirst">I've always had an internal struggle over what version is the right or correct approach.</p>
+          <figure class="hero-img">
+            <div class="frame"><img src="images/photo-05.jpg" alt="Black-and-white street photo of two women on a downtown Chicago sidewalk in harsh sunlight and deep shadow" loading="lazy" decoding="async"></div>
+            <figcaption>Chicago · October 19, 2026</figcaption>
+          </figure>
+          <p>This is a topic that has been on my mind for the last few years. When I started photography, I was almost immediately drawn to street photography. Possibly because it had the least barrier to entry. Possibly because I loved the raw truth of the format — the documentation of it, the straightforward approach to it. Unlike portrait work, where you do heavy editing to make a stylized version of reality and the subject, street photography is honest. You get what you see. Regardless of why, it seems to be my chosen art form. It's a way to document not only the life I see as an individual, but also the life that is.</p>
+          <p>That being said, there is some ethical discourse I've seen over the years I've spent doing this form of photography. There seem to be groups of people that go around asking strangers if they can take their image. That seems to be a very connecting version of street photography — creating relationships with people while still capturing essentially strangers. Then I've seen people that shoot far and discreet, capturing filmic, movie-like scenes of the city or the location. Sometimes I like falling into this category. Then there is a final group that takes a very intense, almost invasive approach. It's in your face, no questions or consent asked — just a photographer choosing a moment and capturing the reality of that moment.</p>
+          <p>I rarely fall in the first category, as I do believe that kind of eliminates the realness of a moment. Most often I choose to be a silent observer, far away, capturing the beauty of a moment. But other times I feel like the truth of the moment supersedes the momentary discomfort of everyone.</p>
+          <p>Recently I had a situation that got intense, with someone following me into a building after taking photos — even though that person was not the subject. To be honest, I was not even aware of them at the moment. It got me thinking about how people react to cameras, and how it's changed over just the recent years that I've done this art form.</p>
+          <p>Although it's always caught people off guard, and sometimes led to some uncomfortable confrontations, I feel like as technology becomes ever-present in our lives, people are much more guarded and hypervigilant of cameras. I have noticed a growing discomfort with the camera even being present. Lately in the news we've been seeing discourse around Flock cameras and other social monitoring. Now everyone lives almost a split — or maybe a layered life would be a better way to describe it. One part of our existence is in the real, natural world, and the second is as a presence in a digital layer that now exists at all times. It feels like people are now so hypervigilant about that second layer being affected. People are scared to show up online and randomly have a post be about them — to find themselves on the other side of a TikTok or a post.</p>
+          <p>So that brings me to think. In the early years of this art form, film photographers would do street photography and develop, and at best have images that no one would ever see but themselves — or at worst, a book was made that only a select community might even be interested in. Now a street photographer's post, video content, can go live into a world where millions of people can stumble upon it. Is it not morally less ethical? Is it now a version of art that can be deemed unethical — or one of those things that will be remembered as a morally wrong part of a time, the way certain words used to describe people have become outdated and incorrect?</p>
         </article>
       </section>
 
@@ -575,7 +604,7 @@
     <script>
       (function () {
         var VIEWS = ["posts", "gallery", "kit", "about"];
-        var POSTS = ["post-zf-first-impressions", "post-albany-park-photo-book"];
+        var POSTS = ["post-zf-first-impressions", "post-albany-park-photo-book", "post-street-photography-2026-unethical"];
 
         /* Gallery photos — newest first. Caption is just location · date;
            leave caption empty when unknown and Kevin will fill it in. */
