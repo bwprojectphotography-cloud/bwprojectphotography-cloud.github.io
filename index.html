@@ -338,7 +338,7 @@
         </div>
 
         <div class="filters" role="group" aria-label="Filter posts by tag">
-          <span class="count" id="post-count">3 posts</span>
+          <span class="count" id="post-count">4 posts</span>
           <button class="chip" data-filter="all" aria-pressed="true">All</button>
           <button class="chip" data-filter="review" aria-pressed="false">Reviews</button>
           <button class="chip" data-filter="field-notes" aria-pressed="false">Field Notes</button>
@@ -346,6 +346,18 @@
         </div>
 
         <div class="post-list" id="post-list">
+          <a class="post" href="assets/posts/samsung-dex-2026.html" data-tag="review">
+            <span class="thumb" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#161614;" aria-hidden="true">
+              <span style="font-weight:900;font-size:clamp(56px,7vw,92px);line-height:1;letter-spacing:-0.02em;color:#f2f0ea;">De<span style="color:#ff4d00;">X</span></span>
+              <span style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#a8a49a;">Samsung · Z Fold 7</span>
+            </span>
+            <span>
+              <span class="meta"><span class="tag">Review</span><span>November 5, 2026</span></span>
+              <h2>Samsung DeX in 2026</h2>
+              <p class="excerpt">After a couple of months with the Z Fold 7, DeX is like using a Chromebook — and how good or bad the experience is depends entirely on the peripherals you pair it with.</p>
+              <span class="read">Read the post <span>→</span></span>
+            </span>
+          </a>
           <a class="post" href="assets/posts/leftfoto-wood-handgrip-review.html" data-tag="review">
             <span class="thumb"><img src="assets/leftfoto-grip-cafe-front.jpg" alt="Front view of my black Nikon Zf with the Leftfoto light wood handgrip fitted, sitting on a café table" /></span>
             <span>
@@ -517,6 +529,7 @@
         /* Each post is its own page under assets/posts/. Old hash links
            (#post/<slug>) redirect to the real page so shared links keep working. */
         var LEGACY_POSTS = {
+          "post-samsung-dex-2026": "assets/posts/samsung-dex-2026.html",
           "post-leftfoto-wood-handgrip-review": "assets/posts/leftfoto-wood-handgrip-review.html",
           "post-zf-first-impressions": "assets/posts/zf-first-impressions.html",
           "post-street-photography-2026-unethical": "assets/posts/street-photography-2026-unethical.html"
