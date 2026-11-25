@@ -303,9 +303,24 @@
         html { scroll-behavior: auto; }
         .post .thumb img { transition: none; }
       }
+    
+      /* Fixed dot field — dots locked to the screen across the whole page
+         background; they never move as you scroll, and they are not
+         visible at all times — a dot only appears when the glow reaches
+         it, lighting it orange-red (the blog accent) around where you are. */
+      #dot-field {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+      }
+      main, footer.site { position: relative; z-index: 1; }
     </style>
   </head>
   <body>
+    <canvas id="dot-field" aria-hidden="true"></canvas>
     <header class="site">
       <div class="wrap site-inner">
         <a class="wordmark" href="#" data-goto="posts" aria-label="B.W. Project Photography — home">
@@ -347,7 +362,7 @@
 
         <div class="post-list" id="post-list">
           <a class="post" href="assets/posts/in-between.html" data-tag="field-notes">
-            <span class="thumb"><img src="assets/in-between-train-window.jpg" alt="CTA train car at a platform in Chicago, sunlight raking across it, a young man visible through a window" /></span>
+            <span class="thumb"><img src="assets/in-between-train-window.jpg" alt="A CTA train stopped at a platform in Chicago, a young man visible through one of the car windows, shot on the Nikon Zf" /></span>
             <span>
               <span class="meta"><span class="tag">Field Notes</span><span>November 21, 2026</span></span>
               <h2>In Between</h2>
@@ -806,5 +821,546 @@
         route();
       })();
     </script>
+      <script>
+    (function () {
+      var canvas = document.getElementById('dot-field');
+      if (!canvas || !canvas.getContext) { return; }
+      var ctx = canvas.getContext('2d');
+      var SPACING = 36;
+      var BASE_R = 1.6;
+      var TAU = Math.PI * 2;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var vw = 0;
+      var vh = 0;
+      var inkRGB = '20,20,20';
+      var accentRGB = '243,76,25';
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var rafId = null;
+      /* Cursor-follow state. hasCursor is true only while a mouse/pen
+         cursor is actually present on the page. On touch devices the
+         glow follows the finger instead (hasTouch / touchX / touchY,
+         below). Otherwise the glow falls back to the viewport centre —
+         before the first mouse move or touch, and after the cursor
+         leaves the page or the finger lifts. */
+      var finePointerQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+      var canFollowCursor = !!(finePointerQuery && finePointerQuery.matches);
+      var hasCursor = false;
+      var cursorX = 0;
+      var cursorY = 0;
+      /* Finger-follow state (touch devices): while a finger is down
+         and moving, the glow is pinned to it with no lag, exactly
+         like the desktop cursor. When the finger lifts, the glow
+         eases back to the viewport centre. */
+      var hasTouch = false;
+      var touchX = 0;
+      var touchY = 0;
+      var glowX = 0;
+      var glowY = 0;
+      var glowInit = false;
+      /* lastTickAt drives frame-rate independent easing so the glow
+         motion is equally smooth at 60Hz and 120Hz. */
+      var lastTickAt = 0;
+      /* Motion-driven fade: the glow is alive only while there is
+         motion. The instant cursor movement and scrolling stop, the
+         fade begins — no waiting period. IDLE_MS is just the tiny
+         gap (a frame or two without an event) that counts as
+         "stopped"; any movement restores the glow at once. */
+      var IDLE_MS = 60;
+      var lastActivityAt = performance.now();
+      var idleBlend = 0;
+      /* No scroll lag and no dimming: the glow's home is exactly
+         on the cursor on desktop and on the finger (or the
+         viewport centre when no finger is down) on mobile, and
+         scrolling never fades it; while the
+         page scrolls the glow stays at full strength, the same as
+         when it follows the cursor. Scrolling does carry the glow
+         away from that home and back (scrollOffsetY, below) with
+         the cursor follow's own motion and fade. scrollSpeed is the smoothed scroll
+         velocity (px per ms) measured from real scroll events, and
+         scrollFade tracks it (0 at rest, 1 at full speed). draw()
+         uses it only to strengthen the dots on the side the page
+         is scrolling toward (scrollDirY), so more dots glow on
+         that side without the glow ever reaching ahead. */
+      var scrollSpeed = 0;
+      var scrollFade = 0;
+      var scrollDirY = 0;
+      var lastScrollAt = 0;
+      var lastScrollEventAt = 0;
+      /* Scroll-start widening: when a scroll initiates, the glow
+         area widens out, then eases back to normal as the scroll
+         settles. scrollWiden is 0 at the normal radius and 1 at
+         fully widened; widenHoldUntil keeps it wide for a beat
+         after initiation before tick() eases it back down. */
+      var scrollWiden = 0;
+      var widenHoldUntil = 0;
+      /* Scroll motion, borrowed from the cursor follow: scrolling
+         pushes the glow through the fixed dot field in the
+         direction of travel, the same way moving the cursor drags
+         it across the dots — lighting dots as it passes and
+         leaving the same fading trail behind it. scrollOffsetY is
+         the glow's current travel offset from its home position
+         (on the cursor on desktop, on the finger or the viewport
+         centre on mobile);
+         scrollOffsetTarget is where the accumulated scroll
+         movement is asking it to be. tick() glides the offset with
+         the same easing the glow uses elsewhere, and once the
+         scroll settles the target relaxes back to zero so the glow
+         drifts home instead of snapping back. */
+      var scrollOffsetY = 0;
+      var scrollOffsetTarget = 0;
+      var lastScrollMoveAt = 0;
+      var trailX = 0;
+      var trailY = 0;
+      var trailInit = false;
+      /* Comet tail: every dot remembers the strongest glow that has
+         passed over it and lets that memory decay slowly, so dots the
+         glow leaves behind stay lit briefly and fade out in its wake
+         instead of switching off the instant it moves on. trailDecay
+         is refreshed each frame from the real elapsed time. */
+      var dotMemory = null;
+      var trailDecay = 0.97;
+      var tailActive = false;
+      var lastScrollY = window.scrollY || 0;
+      var idleTimer = null;
+
+      function toRGB(value) {
+        var v = (value || '').trim();
+        var hex = v.match(/^#([0-9a-f]{6})$/i);
+        if (hex) {
+          var n = parseInt(hex[1], 16);
+          return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+        }
+        var rgb = v.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        return rgb ? rgb[1] + ',' + rgb[2] + ',' + rgb[3] : null;
+      }
+
+      function readColors() {
+        var cs = getComputedStyle(document.documentElement);
+        inkRGB = toRGB(cs.getPropertyValue('--ink')) || inkRGB;
+        accentRGB = toRGB(cs.getPropertyValue('--accent')) || accentRGB;
+      }
+
+      function desiredGlowX() {
+        if (hasCursor && canFollowCursor) { return cursorX; }
+        if (hasTouch) { return touchX; }
+        return vw / 2;
+      }
+      function desiredGlowY() {
+        if (hasCursor && canFollowCursor) { return cursorY; }
+        if (hasTouch) { return touchY; }
+        return vh / 2;
+      }
+
+      function draw() {
+        tailActive = false;
+        ctx.clearRect(0, 0, vw, vh);
+        var cx = glowX;
+        var cy = glowY + scrollOffsetY;
+        var glowR = Math.max(230, Math.min(vw, vh) * 0.48) * (1 + 0.55 * scrollWiden);
+        /* Scrolling never dims the glow: while the page scrolls the
+           glow stays at full strength, exactly as bright as when it
+           is following the cursor. There are no always-on base dots
+           any more — dots are not visible at all times. A dot is
+           only drawn when the glow (or its fading trail) reaches
+           it, so away from the glow the field is empty. */
+        /* The grid is anchored to the viewport only, never to the
+           scroll position, so the dots stay perfectly still while
+           the page content moves underneath them. */
+        var lastRow = Math.floor(vh / SPACING);
+        var lastCol = Math.floor(vw / SPACING);
+        var stride = lastCol + 1;
+        var r, c, x, y, dx, dy, t, dotR, idx, mem;
+        for (r = 0; r <= lastRow; r++) {
+          y = r * SPACING + SPACING / 2;
+          for (c = 0; c <= lastCol; c++) {
+            x = c * SPACING + SPACING / 2;
+            dx = x - cx;
+            dy = y - cy;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            /* Directional boost, not a lead: the glow's radius never
+               stretches or reaches ahead — the falloff stays round
+               and centred where the glow belongs. Instead, while
+               scrolling, the dots on the side the page is heading
+               toward — below the glow when scrolling down, above it
+               when scrolling up — get a stronger share of that same
+               glow, so more dots light up on that side. Strength
+               follows the smoothed scroll speed, so the boost grows
+               as you scroll faster and relaxes back to an even glow
+               as you slow. Applies on desktop (around the cursor)
+               and mobile (around the finger, or the centre when no
+               finger is down) alike. */
+            t = 1 - dist / glowR;
+            if (t < 0) { t = 0; }
+            t = t * t * (3 - 2 * t);
+            if (t > 0 && scrollFade > 0.01 && scrollDirY !== 0 && dist > 0.001) {
+              var ahead = (dy * scrollDirY) / dist;
+              if (ahead > 0) { t = t + (1 - t) * 0.55 * scrollFade * ahead; }
+            }
+            /* Dots keep their original base size everywhere — only
+               their light changes, never their size or position. */
+            dotR = BASE_R;
+            /* Comet tail: fold in this dot's remembered glow. A dot
+               the glow has just left keeps the stronger of what it
+               remembers and what it sees now, and the memory decays
+               a little every frame, so the glow's path stays visible
+               as a fading tail behind it. */
+            var s = t;
+            if (dotMemory) {
+              idx = r * stride + c;
+              mem = dotMemory[idx] * trailDecay;
+              if (mem > s) { s = mem; }
+              if (mem > t + 0.02) { tailActive = true; }
+            } else { idx = -1; }
+            if (idleBlend > 0.001) {
+              /* Idle fade: the whole glow drains away evenly until
+                 nothing is lit. */
+              s = s * (1 - idleBlend);
+            }
+            if (dotMemory && idx >= 0) { dotMemory[idx] = s; }
+            if (s > 0.004) {
+              ctx.beginPath();
+              ctx.fillStyle = 'rgba(' + accentRGB + ',' + (0.20 * s).toFixed(3) + ')';
+              ctx.arc(x, y, dotR + 7 * s, 0, TAU);
+              ctx.fill();
+              ctx.beginPath();
+              ctx.fillStyle = 'rgba(' + accentRGB + ',' + (0.15 + 0.85 * s).toFixed(3) + ')';
+              ctx.arc(x, y, dotR + 1.6 * s, 0, TAU);
+              ctx.fill();
+            }
+          }
+        }
+      }
+
+      function resize() {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+        canvas.width = Math.round(vw * dpr);
+        canvas.height = Math.round(vh * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        dotMemory = new Float32Array((Math.floor(vw / SPACING) + 1) * (Math.floor(vh / SPACING) + 1));
+        if (!glowInit) {
+          glowX = vw / 2;
+          glowY = vh / 2;
+          glowInit = true;
+          trailX = glowX;
+          trailY = glowY;
+          trailInit = true;
+        }
+        draw();
+      }
+
+      function tick(now) {
+        if (typeof now !== 'number') { now = performance.now(); }
+        /* Frame-rate independent easing: dt is the real elapsed time
+           since the last frame, so the glow glides at the same speed
+           on a 60Hz phone and a 120Hz desktop instead of jumping
+           further on every other frame. Only the glow ever moves —
+           the dots themselves are fixed to the screen. The loop runs
+           continuously so the idle deadline is met the moment it
+           passes, but a frame is only painted when something is
+           actually changing. */
+        var dt = lastTickAt ? Math.min(now - lastTickAt, 64) : 16;
+        lastTickAt = now;
+        /* Comet-tail memory decay for this frame (~650ms time
+           constant, so a passed dot fades out slowly and
+           gradually behind the glow instead of vanishing). */
+        trailDecay = Math.exp(-dt / 650);
+        /* Scroll speed: once scroll events stop arriving the
+           measured speed falls away, so the directional boost in
+           draw() relaxes as the scroll slows or settles. The easing
+           is quick (about 120ms) so it tracks the speed closely
+           without stepping. */
+        if (now - lastScrollEventAt > 50 && scrollSpeed > 0) {
+          scrollSpeed *= Math.exp(-dt / 160);
+          if (scrollSpeed < 0.01) { scrollSpeed = 0; }
+        }
+        var fadeTarget = scrollSpeed / 2.2;
+        if (fadeTarget > 1) { fadeTarget = 1; }
+        if (fadeTarget < 0) { fadeTarget = 0; }
+        var fadeDiff = fadeTarget - scrollFade;
+        if (Math.abs(fadeDiff) < 0.003) { scrollFade = fadeTarget; }
+        else { scrollFade += fadeDiff * (1 - Math.exp(-dt / (fadeTarget > scrollFade ? 250 : 2100))); }
+        var fadeActive = Math.abs(fadeDiff) >= 0.003 || scrollFade > 0.001;
+        /* Scroll travel: glide the glow's offset toward the target
+           the scroll movement built up, using the same 140ms glide
+           as the glow's return to centre, so scrolling feels like
+           the cursor motion — a smooth sweep through the dots, not
+           a jump. Once scroll events stop arriving, the target
+           relaxes back to zero and the glow drifts home. The glow's
+           brightness uses the very same fade as the cursor follow
+           (idleBlend below): scrolling counts as activity, so it
+           fades in with the quick 250ms return while moving and
+           drains out with the 800ms fade the moment the scroll
+           stops — identical in and out to the cursor. */
+        if (now - lastScrollMoveAt > 140 && scrollOffsetTarget !== 0) {
+          scrollOffsetTarget *= Math.exp(-dt / 300);
+          if (Math.abs(scrollOffsetTarget) < 0.3) { scrollOffsetTarget = 0; }
+        }
+        var offDiff = scrollOffsetTarget - scrollOffsetY;
+        if (Math.abs(offDiff) < 0.3) { scrollOffsetY = scrollOffsetTarget; }
+        else { scrollOffsetY += offDiff * (1 - Math.exp(-dt / 140)); }
+        var scrollMoving = Math.abs(offDiff) >= 0.3 || Math.abs(scrollOffsetY) > 0.3;
+        /* Widening ease: fast out when a scroll has just initiated
+           (while widenHoldUntil is in the future), slower back to
+           normal once the scroll settles. */
+        var widenTarget = (now < widenHoldUntil) ? 1 : 0;
+        var widenDiff = widenTarget - scrollWiden;
+        if (Math.abs(widenDiff) < 0.003) { scrollWiden = widenTarget; }
+        else { scrollWiden += widenDiff * (1 - Math.exp(-dt / (widenTarget > scrollWiden ? 80 : 420))); }
+        var widenActive = Math.abs(widenDiff) >= 0.003 || scrollWiden > 0.001;
+        /* Idle fade: coming back on movement is quick, and fading
+           out once everything sits still is a smooth drain over
+           roughly a second, so the glow disappears soon after
+           motion stops instead of lingering. */
+        var idleTarget = (now - lastActivityAt >= IDLE_MS) ? 1 : 0;
+        var idleDiff = idleTarget - idleBlend;
+        if (Math.abs(idleDiff) < 0.002) { idleBlend = idleTarget; }
+        else { idleBlend += idleDiff * (1 - Math.exp(-dt / (idleTarget > idleBlend ? 800 : 250))); }
+        var wantX = desiredGlowX();
+        var wantY = desiredGlowY();
+        var settled;
+        if (hasCursor && canFollowCursor) {
+          /* Desktop cursor follow has NO lag: the glow's home sits
+             exactly on the cursor every frame. Scrolling never
+             dims the glow either; it carries the glow from that
+             home via scrollOffsetY (applied in draw()) and
+             scrollFade strengthens the dots on the side being
+             scrolled toward. */
+          settled = (glowX === wantX && glowY === wantY);
+          glowX = wantX;
+          glowY = wantY;
+        } else if (hasTouch) {
+          /* Finger follow on touch devices has NO lag either: the
+             glow's home sits exactly on the finger every frame,
+             the same pinning the desktop cursor gets. */
+          settled = (glowX === wantX && glowY === wantY);
+          glowX = wantX;
+          glowY = wantY;
+        } else {
+          /* Nothing to follow (mobile with the finger lifted, or
+             desktop before/after the cursor): the glow belongs at
+             the centre. Only the return to centre is eased, so it
+             glides home instead of jumping across the screen. */
+          var glowDiffX = wantX - glowX;
+          var glowDiffY = wantY - glowY;
+          settled = Math.abs(glowDiffX) < 0.4 && Math.abs(glowDiffY) < 0.4;
+          if (settled) {
+            glowX = wantX;
+            glowY = wantY;
+          } else {
+            var kGlow = 1 - Math.exp(-dt / 140);
+            glowX += glowDiffX * kGlow;
+            glowY += glowDiffY * kGlow;
+          }
+        }
+        if (!trailInit) { trailX = glowX; trailY = glowY; trailInit = true; }
+        trailX = glowX;
+        trailY = glowY;
+        if (!settled || tailActive || idleBlend !== idleTarget || fadeActive || widenActive || scrollMoving) { draw(); }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function kick() {
+        if (reduceMotion) {
+          scrollSpeed = 0;
+          scrollFade = 0;
+          scrollOffsetY = 0;
+          scrollOffsetTarget = 0;
+          scrollWiden = 0;
+          widenHoldUntil = 0;
+          idleBlend = 0;
+          glowX = desiredGlowX();
+          glowY = desiredGlowY();
+          trailX = glowX;
+          trailY = glowY;
+          trailInit = true;
+          draw();
+          if (idleTimer) { clearTimeout(idleTimer); }
+          idleTimer = setTimeout(function () { idleBlend = 1; draw(); }, IDLE_MS);
+          return;
+        }
+        if (!rafId) { rafId = requestAnimationFrame(tick); }
+      }
+
+      function onPointerMove(e) {
+        if (!canFollowCursor) { return; }
+        /* Touch pointers are not a cursor — they are handled by
+           the touch listeners below, which pin the glow to the
+           finger instead. */
+        if (e.pointerType && e.pointerType !== 'mouse' && e.pointerType !== 'pen') { return; }
+        if (typeof e.clientX !== 'number' || typeof e.clientY !== 'number') { return; }
+        var wasPresent = hasCursor;
+        cursorX = e.clientX;
+        cursorY = e.clientY;
+        hasCursor = true;
+        lastActivityAt = performance.now();
+        if (!wasPresent && !reduceMotion) {
+          /* First entry: start the glow at the cursor instead of
+             sweeping it across the whole screen from the centre. */
+          glowX = cursorX;
+          glowY = cursorY;
+          trailX = glowX;
+          trailY = glowY;
+          trailInit = true;
+          draw();
+          kick();
+          return;
+        }
+        if (!reduceMotion) {
+          /* No lag on the cursor: the glow is on the cursor the
+             moment the move lands, not eased there over later
+             frames. tick() keeps it pinned the same way. */
+          glowX = cursorX;
+          glowY = cursorY;
+          trailX = glowX;
+          trailY = glowY;
+          trailInit = true;
+          draw();
+        }
+        kick();
+      }
+
+      function onCursorGone() {
+        if (!hasCursor) { return; }
+        hasCursor = false;
+        lastActivityAt = performance.now();
+        kick();
+      }
+
+      /* Finger follow (touch devices): while a finger is down, the
+         glow tracks it with the same no-lag pinning the desktop
+         cursor gets — set here on the event and kept pinned every
+         frame by tick(). Touching and dragging count as activity,
+         so the glow wakes and stays at full strength while the
+         finger moves. When the finger lifts, hasTouch clears and
+         tick() eases the glow back to the viewport centre, where
+         the normal idle fade takes over. The listeners are passive
+         so they never block scrolling; a drag that scrolls still
+         feeds the scroll behaviour above as usual. */
+      function onTouchMove(e) {
+        if (!e.touches || !e.touches.length) { return; }
+        var t = e.touches[0];
+        if (typeof t.clientX !== 'number' || typeof t.clientY !== 'number') { return; }
+        var wasDown = hasTouch;
+        touchX = t.clientX;
+        touchY = t.clientY;
+        hasTouch = true;
+        lastActivityAt = performance.now();
+        if (!reduceMotion) {
+          /* No lag on the finger either: the glow is on the finger
+             the moment the touch lands or moves. On the first touch
+             this also starts the glow at the finger instead of
+             sweeping it across the screen from the centre. */
+          glowX = touchX;
+          glowY = touchY;
+          trailX = glowX;
+          trailY = glowY;
+          trailInit = true;
+          draw();
+        }
+        kick();
+      }
+
+      function onTouchEnd() {
+        if (!hasTouch) { return; }
+        hasTouch = false;
+        lastActivityAt = performance.now();
+        kick();
+      }
+
+      /* Scrolling never moves the dots — the grid stays locked to
+         the screen. What scrolling moves is the glow, with the
+         same motion the cursor gives it: the distance scrolled
+         pushes the glow through the field in the direction of
+         travel (see scrollOffsetTarget below), it glides there
+         and drifts home in tick(), and the trail it leaves fades
+         behind it exactly as it does behind the cursor. A scroll
+         also measures speed: the distance moved divided by the
+         time since the previous scroll event, smoothed so one
+         big jump does not spike it. That speed drives scrollFade
+         in tick(), which draw() uses to strengthen the dots on
+         the side being scrolled toward. Each event also records
+         the direction of travel in scrollDirY for that boost.
+         Scrolling counts as activity just like cursor movement,
+         so it fades the glow in and out on the same timing. */
+      window.addEventListener('scroll', function () {
+        var y = window.scrollY || 0;
+        var delta = y - lastScrollY;
+        lastScrollY = y;
+        if (delta === 0) { return; }
+        scrollDirY = delta > 0 ? 1 : -1;
+        var nowS = performance.now();
+        /* Feed the scroll travel: each scroll movement pushes the
+           glow's target further in the direction of travel (a
+           fraction of the real distance, clamped so the glow
+           sweeps through the field without leaving the screen),
+           exactly as cursor movement carries the glow with it. */
+        scrollOffsetTarget += delta * 0.45;
+        var maxOff = Math.min(vh * 0.32, 260);
+        if (scrollOffsetTarget > maxOff) { scrollOffsetTarget = maxOff; }
+        if (scrollOffsetTarget < -maxOff) { scrollOffsetTarget = -maxOff; }
+        lastScrollMoveAt = nowS;
+        var gap = nowS - lastScrollEventAt;
+        /* Scroll initiation: a scroll arriving after a settled
+           gap widens the glow area; tick() holds it briefly then
+           eases it back to normal as the scroll settles. */
+        if (!lastScrollEventAt || gap > 150) { widenHoldUntil = nowS + 140; }
+        if (lastScrollEventAt && gap > 0 && gap < 250) {
+          var instSpeed = Math.abs(delta) / gap;
+          /* Favour the faster reading so a quickening scroll fades
+             promptly, but keep some smoothing against jitter. */
+          scrollSpeed = Math.max(scrollSpeed * 0.55, instSpeed);
+          if (scrollSpeed > 6) { scrollSpeed = 6; }
+        }
+        lastScrollEventAt = nowS;
+        lastScrollAt = nowS;
+        lastActivityAt = performance.now();
+        kick();
+      }, { passive: true });
+      window.addEventListener('resize', function () { readColors(); lastScrollY = window.scrollY || 0; resize(); kick(); });
+
+      if (window.PointerEvent) {
+        window.addEventListener('pointermove', onPointerMove, { passive: true });
+        document.addEventListener('pointerout', function (e) {
+          if (!e.relatedTarget) { onCursorGone(); }
+        });
+      } else {
+        window.addEventListener('mousemove', onPointerMove, { passive: true });
+      }
+      document.addEventListener('mouseleave', onCursorGone);
+      if (document.documentElement) {
+        document.documentElement.addEventListener('mouseleave', onCursorGone);
+      }
+      document.addEventListener('mouseout', function (e) {
+        if (!e.relatedTarget) { onCursorGone(); }
+      });
+      window.addEventListener('blur', onCursorGone);
+      document.addEventListener('mouseenter', function () { /* presence is set on first move */ });
+
+      window.addEventListener('touchstart', onTouchMove, { passive: true });
+      window.addEventListener('touchmove', onTouchMove, { passive: true });
+      window.addEventListener('touchend', onTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+      if (finePointerQuery) {
+        var onFineChange = function (ev) {
+          canFollowCursor = !!ev.matches;
+          if (!canFollowCursor) { hasCursor = false; }
+          kick();
+        };
+        if (finePointerQuery.addEventListener) { finePointerQuery.addEventListener('change', onFineChange); }
+        else if (finePointerQuery.addListener) { finePointerQuery.addListener(onFineChange); }
+      }
+
+      var scheme = window.matchMedia('(prefers-color-scheme: dark)');
+      if (scheme.addEventListener) {
+        scheme.addEventListener('change', function () { readColors(); draw(); });
+      }
+
+      readColors();
+      resize();
+      kick();
+    })();
+      </script>
   </body>
 </html>
